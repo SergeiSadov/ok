@@ -45,6 +45,9 @@ func csvToArgs(types []string, r io.Reader, comma rune) (result [][]interface{},
 type converter func(src string) (interface{}, error)
 
 func converterFactory(t string) (converter, error) {
+	if strings.HasPrefix(t, "Nullable") {
+		t = strings.TrimRight(strings.TrimLeft(t, "Nullable("), ")")
+	}
 	switch t {
 	case "String", "UUID":
 		return func(src string) (interface{}, error) { return src, nil }, nil
@@ -136,11 +139,18 @@ func floatT(bitSize int, cast func(float64) interface{}) converter {
 func arrayT(convert converter) converter {
 	return func(src string) (v interface{}, err error) {
 		var (
-			slice  reflect.Value
-			values = strings.Split(src[1:len(src)-1], ",")
+			slice      reflect.Value
+			values     = strings.Split(src[1:len(src)-1], ",")
+			emptySlice bool
 		)
+
+		if src == "[]" {
+			emptySlice = true
+			values = strings.Split("1", ",")
+		}
+
 		for _, value := range values {
-			if value[0] == '\'' && value[len(value)-1] == '\'' {
+			if len(values) > 1 && value[0] == '\'' && value[len(value)-1] == '\'' {
 				value = value[1 : len(value)-1]
 			}
 			switch v, err = convert(value); {
@@ -178,7 +188,9 @@ func arrayT(convert converter) converter {
 				}
 				slice = reflect.MakeSlice(reflect.TypeOf(sliceType), 0, len(values))
 			}
-			slice = reflect.Append(slice, reflect.ValueOf(v))
+			if !emptySlice {
+				slice = reflect.Append(slice, reflect.ValueOf(v))
+			}
 		}
 		return slice.Interface(), nil
 	}
